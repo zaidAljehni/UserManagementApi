@@ -24,21 +24,29 @@ app.Use(async (context, next) =>
     {
         var errorMessage = app.Environment.IsProduction() ? "Internal server error." : e.Message;
         context.Response.StatusCode = 500;
-        await context.Response.WriteAsync($"{{error: \"{errorMessage}\"}}");
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync($"{{\"error\": \"{errorMessage}\"}}");
     }
 });
 
 app.Use(async (context, next) =>
 {
-    string? key = context.Request.Query["key"];
-    if (key == apiKey)
+    if (context.Request.Path == "/swagger")
     {
         await next.Invoke();
     }
     else
     {
-        context.Response.StatusCode = 401;
-        await context.Response.WriteAsync("Unauthorized");
+        string? key = context.Request.Query["key"];
+        if (key == apiKey)
+        {
+            await next.Invoke();
+        }
+        else
+        {
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsync("Unauthorized");
+        }
     }
 });
 
@@ -67,7 +75,7 @@ app.MapGet("/users", IResult () =>
     return TypedResults.Ok(usersList);
 });
 app.MapGet(
-        "/users/{id:int:min(0)}",
+        "/users/{id:int:min(1)}",
         Results<NotFound, Ok<User>> (int id) =>
         {
             User? user = null;
@@ -87,27 +95,30 @@ app.MapPost(
         "/users",
         Results<UnprocessableEntity<string>, Created<User>> (User user) =>
         {
-            user.Name = user.Name.Trim();
-            user.Email = user.Email.Trim();
-            if (String.IsNullOrEmpty(user.Name) || String.IsNullOrEmpty(user.Email))
+            if (string.IsNullOrWhiteSpace(user.Name) || string.IsNullOrWhiteSpace(user.Email))
             {
                 return TypedResults.UnprocessableEntity("Name and email are required");
             }
+
+            user.Name = user.Name.Trim();
+            user.Email = user.Email.Trim();
 
             if (!user.HasValidEmail())
             {
                 return TypedResults.UnprocessableEntity("email is invalid");
             }
 
-            users.Add(idCounter++, user);
-            return TypedResults.Created($"/users/{idCounter}", user);
+            int addedId = idCounter;
+            idCounter++;
+            users.Add(addedId, user);
+            return TypedResults.Created($"/users/{addedId}", user);
         }
     )
     .Produces(StatusCodes.Status201Created)
     .Produces(StatusCodes.Status422UnprocessableEntity);
 
 app.MapPut(
-        "/users/{id:int:min(0)}",
+        "/users/{id:int:min(1)}",
         Results<NotFound, UnprocessableEntity<string>, Ok<User>> (int id, User user) =>
         {
             User? previousUser = null;
@@ -117,19 +128,20 @@ app.MapPut(
                 return TypedResults.NotFound();
             }
 
-            user.Name = user.Name.Trim();
-            user.Email = user.Email.Trim();
-            if (String.IsNullOrEmpty(user.Name) || String.IsNullOrEmpty(user.Email))
+            if (string.IsNullOrWhiteSpace(user.Name) || string.IsNullOrWhiteSpace(user.Email))
             {
                 return TypedResults.UnprocessableEntity("Name and email are required");
             }
+
+            user.Name = user.Name.Trim();
+            user.Email = user.Email.Trim();
 
             if (!user.HasValidEmail())
             {
                 return TypedResults.UnprocessableEntity("email is invalid");
             }
 
-            users[idCounter] = user;
+            users[id] = user;
             return TypedResults.Ok(user);
         }
     )
@@ -138,7 +150,7 @@ app.MapPut(
     .Produces(StatusCodes.Status422UnprocessableEntity);
 
 app.MapDelete(
-        "/users/{id:int:min(0)}",
+        "/users/{id:int:min(1)}",
         Results<NotFound, NoContent> (int id) =>
         {
             if (!users.ContainsKey(id))
