@@ -141,13 +141,12 @@ app.MapDelete(
         "/users/{id:int:min(0)}",
         Results<NotFound, NoContent> (int id) =>
         {
-            User? user = null;
-            users.TryGetValue(id, out user);
-            if (user == null)
+            if (!users.ContainsKey(id))
             {
                 return TypedResults.NotFound();
             }
 
+            users.Remove(id);
             return TypedResults.NoContent();
         }
     )
